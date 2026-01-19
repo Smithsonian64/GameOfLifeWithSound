@@ -10,7 +10,6 @@ import java.awt.image.BufferedImage;
 
 public class GOLEngine extends JFrame {
 
-    Cell[][] cells;
     boolean[][] cellStep;
 
     static int windowWidth;
@@ -19,11 +18,11 @@ public class GOLEngine extends JFrame {
     static int numBirths;
     static int numDeaths;
 
-    public static float baselineFrequency = 365;
-    public static float baselineAmplitude = 0.4f;
+    public static float baselineFrequency = 150;
+    public static float baselineAmplitude = 0.15f;
 
 
-    static BufferedImage grid;
+    static BufferedImage gridimage;
     JPanel imagePanel;
 
     static Synthesizer synth = JSyn.createSynthesizer();;
@@ -31,7 +30,11 @@ public class GOLEngine extends JFrame {
     static UnitOscillator osc2;
     static LineOut lineOut;
 
-    public GOLEngine(int width, int height) {
+    public Grid grid;
+
+    float trend;
+
+    public GOLEngine(int width, int height, Grid grid) {
         super("GOL");
 
         windowWidth = width;
@@ -40,29 +43,14 @@ public class GOLEngine extends JFrame {
 
 
         this.setSize(width, height);
-        imagePanel = new JPanel();
 
-        grid = new BufferedImage(width / 4, height / 4, BufferedImage.TYPE_INT_RGB);
+        trend = 0;
+        this.grid = grid;
 
-        cells = new Cell[grid.getWidth()][grid.getHeight()];
-        cellStep = new boolean[grid.getWidth()][grid.getHeight()];
-        for(int i = 0; i < cellStep.length; i++) {
-            for(int j = 0; j < cellStep[i].length; j++) {
-                cellStep[i][j] = false;
-                cells[i][j] = new Cell();
-            }
-        }
-        for(int i = 0; i < 50; i++) {
-            for(int j = 0; j < 50; j++) {
-                if(Math.random() >= 0.5) cells[i + grid.getWidth() / 2 - 25][j + grid.getHeight() / 2 - 25].isAlive = true;
-            }
-        }
+        gridimage = new BufferedImage(grid.width, grid.height, BufferedImage.TYPE_INT_RGB);
 
-        lastTime = System.nanoTime() / 1000000;
+        lastTime = System.nanoTime() / 1000000000;//1000000000
 
-        /*cells[100][100].isAlive = true;
-        cells[100][101].isAlive = true;
-        cells[100][102].isAlive = true;*/
         Runnable playSound = () -> {
             synth.start();
             synth.add(osc1 = new SineOscillator());
@@ -114,18 +102,17 @@ public class GOLEngine extends JFrame {
 
         BufferedImage output = new BufferedImage(windowWidth, windowHeight, BufferedImage.TYPE_INT_RGB);
         Graphics2D g2d = output.createGraphics();
-        g2d.drawImage(grid,0,0, windowWidth, windowHeight, null);
+        g2d.drawImage(gridimage,0,0, windowWidth, windowHeight, null);
         g.drawImage(output, 0, 0, null);
 
     }
 
     public BufferedImage getGridImage() {
-        BufferedImage temp = new BufferedImage(grid.getWidth(), grid.getHeight(), BufferedImage.TYPE_INT_RGB);
+        BufferedImage temp = new BufferedImage(gridimage.getWidth(), gridimage.getHeight(), BufferedImage.TYPE_INT_RGB);
 
-        for(int i = 0; i < cells.length; i++) {
-            for(int j = 0; j < cells[i].length; j++) {
-                temp.setRGB(i, j, cells[i][j].color.getRGB());
-                //else temp.setRGB(i, j, Color.BLACK.getRGB());
+        for(int i = 0; i < gridimage.getWidth(); i++) {
+            for(int j = 0; j < gridimage.getHeight(); j++) {
+                temp.setRGB(i, j, (grid.getColor(i,j)).getRGB());
             }
         }
 
@@ -133,93 +120,42 @@ public class GOLEngine extends JFrame {
 
     }
 
-    public void calculateNextStep() {
-        long currentTime = System.nanoTime() / 1000000;
-        for(int i = 0; i < cells.length; i++) {
-            for(int j = 0; j < cells[i].length; j++) {
-                cellStep[i][j] = checkNeighbors(i, j);
-            }
-        }
-        for(int i = 0; i < cells.length; i++) {
-            for(int j = 0; j < cells[i].length; j++) {
-                cells[i][j].update(currentTime - lastTime, cellStep[i][j]);
-            }
-        }
-
-        osc1.frequency.set(baselineFrequency * numBirths / numDeaths);
-//        osc2.frequency.set(baselineFrequency * numBirths / numDeaths);
-
-        //if(numDeaths + numBirths >= 100) osc1.amplitude.set(baselineAmplitude);
+    public void calculateNextStep(Grid grid) {
+        long time = System.nanoTime();
 
 
-        System.out.println(numBirths);
-        System.out.println(numDeaths);
+
+        grid.step();
+
+
+
+
+        osc1.frequency.set(baselineFrequency * grid.births / grid.deaths);
 
         numDeaths = 0;
         numBirths = 0;
 
-        //if(numDeaths == 0 && numBirths == 0) synth.stop();
-
-
-
-    }
-
-    public boolean isNeighborAlive(int x, int y) {
-        boolean temp = false;
-
-        if(x - 1 < 0 || x + 1 >= grid.getWidth()) return false;
-        if(y - 1 < 0 || y + 1 >= grid.getHeight()) return false;
-
-        if(cells[x + 1][y].isAlive) temp = true;
-        if(cells[x + 1][y + 1].isAlive) temp = true;
-        if(cells[x][y + 1].isAlive) temp = true;
-        if(cells[x - 1][y + 1].isAlive) temp = true;
-        if(cells[x - 1][y].isAlive) temp = true;
-        if(cells[x - 1][y - 1].isAlive) temp = true;
-        if(cells[x][y - 1].isAlive) temp = true;
-        if(cells[x + 1][y - 1].isAlive) temp = true;
-
-        return temp;
-    }
-
-    public boolean checkNeighbors(int x, int y) {
-        int count = 0;
-
-        if(x - 1 < 0 ||  y - 1 < 0 || x + 1 >= cells.length || y + 1 >= cells[x].length) return false;
-
-        if(cells[x + 1][y].isAlive) count++;
-        if(cells[x + 1][y + 1].isAlive) count++;
-        if(cells[x][y + 1].isAlive) count++;
-        if(cells[x - 1][y + 1].isAlive) count++;
-        if(cells[x - 1][y].isAlive) count++;
-        if(cells[x - 1][y - 1].isAlive) count++;
-        if(cells[x][y - 1].isAlive) count++;
-        if(cells[x + 1][y - 1].isAlive) count++;
-
-        if(count == 0) return false;
-        if(!cells[x][y].isAlive && count == 3) return true;
-        else return cells[x][y].isAlive && count == 2 || count == 3;
+        long dt = System.nanoTime() - time;
+        while(dt < 16666667L) {//1000000000//16666667L//166666667L
+            dt = System.nanoTime() - time;
+        };
 
     }
 
-    public void doIterations(int count){
+    public void doIterations(int count, Grid grid){
         Runnable animate = () -> {
             int num = 0;
             while (count < 0 || num < count) {
-                calculateNextStep();
-                grid = getGridImage();
+                calculateNextStep(grid);
+                gridimage = getGridImage();
                 repaint();
                 try {
-                    Thread.sleep(1);
+                    //Thread.sleep(1);
                 } catch (Exception ignored) {
 
                 }
                 num++;
             }
-
-
-
-
 
         };
 
@@ -229,10 +165,12 @@ public class GOLEngine extends JFrame {
     }
 
     public static void main(String[] args) {
+        Grid grid = new Grid((int)Toolkit.getDefaultToolkit().getScreenSize().getWidth(), (int)Toolkit.getDefaultToolkit().getScreenSize().getHeight(), 4);
+        grid.randomize();
         SwingUtilities.invokeLater(
                 () -> {
-                    GOLEngine window1 = new GOLEngine((int)(Toolkit.getDefaultToolkit().getScreenSize().getWidth()), (int)(Toolkit.getDefaultToolkit().getScreenSize().getHeight()));
-                    window1.doIterations(-1);
+                    GOLEngine window1 = new GOLEngine((int)(Toolkit.getDefaultToolkit().getScreenSize().getWidth()), (int)(Toolkit.getDefaultToolkit().getScreenSize().getHeight()), grid);
+                    window1.doIterations(-1, grid);
                 });
     }
 
